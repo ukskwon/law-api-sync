@@ -69,7 +69,38 @@ def adm_doc(key, body, info):
         arts.append({'n': m.group(1), 't': m.group(2) or '', 'c': ' / '.join(c[1] for c in chap), 'p': p})
     return arts
 
-docs, revs = [], []
+LAWGO = 'https://www.law.go.kr'
+def apps_of(body):
+    B = (body.get('법령') or body.get('AdmRulService') or {}).get('별표') or {}
+    out = []
+    for u in as_list(B.get('별표단위')):
+        kind = u.get('별표구분') or ('서식' if str(u.get('별표키', '')).endswith('F') else '별표')
+        no = str(u.get('별표번호') or '').lstrip('0') or '0'
+        br = str(u.get('별표가지번호') or '').lstrip('0')
+        label = ('별지 제%s호%s서식' % (no, ('의%s' % br) if br else '')) if kind == '서식' else ('별표 %s%s' % (no, ('의%s' % br) if br else ''))
+        def raw(v):
+            if isinstance(v, list): return '\n'.join(raw(i) for i in v)
+            return re.sub(r'<[^>]+>', '', re.sub(r'<br\s*/?>', '\n', str(v or ''), flags=re.I))
+        txt = raw(u.get('별표내용'))
+        m = re.search(r'\[(별표[^\]]{0,20}|별지[^\]]{0,30})\]', txt[:400])
+        if m:
+            label = re.sub(r'\s+', ' ', m.group(1)).strip()
+            kind = '서식' if label.startswith('별지') else '별표'
+        txt = '\n'.join(l.rstrip() for l in txt.split('\n'))
+        txt = re.sub(r'\n{3,}', '\n\n', txt).strip()
+        pdf = u.get('별표서식PDF파일링크') or u.get('별표PDF파일링크'); hwp = u.get('별표서식파일링크')
+        out.append({'n': label, 't': clean(u.get('별표제목'))[:90], 'x': txt[:40000], 'k': kind,
+                    'pdf': (LAWGO + pdf) if pdf else '', 'hwp': (LAWGO + hwp) if hwp else ''})
+    return out
+
+def to_doc(key, info, reg, body):
+    arts = law_doc(key, body, info) if reg.get('target') == 'law' else adm_doc(key, body, info)
+    kind = info.get('kind') or reg.get('kind') or ''
+    no = '%s 제%s호' % (kind, str(info.get('promulNo') or '').lstrip('0')) + (', %s 공포' % dfmt(info.get('promul')) if info.get('promul') else '')
+    return {'key': key, 'name': info.get('name') or reg['name'], 'kind': kind, 'eff': dfmt(info.get('enforce')), 'effRaw': info.get('enforce'),
+            'promul': info.get('promul'), 'no': no, 'st': '국가법령정보센터 Open API 현행본', 'note': '', 'arts': arts, 'apps': apps_of(body), 'g': 'api'}
+
+docs, revs, alldocs = [], [], []
 for key, info in man.items():
     reg = regs.get(key, {})
     path = 'data/%s.json' % key
@@ -83,12 +114,13 @@ for key, info in man.items():
         reason = clean(flat_text(rz.get('제개정이유내용') if isinstance(rz, dict) else rz))[:1200]
     revs.append({'key': key, 'name': info.get('name') or reg.get('name'), 'kind': info.get('kind') or reg.get('kind'), 'promul': info.get('promul'),
                  'no': info.get('promulNo'), 'enforce': info.get('enforce'), 'rev': info.get('rev'), 'reason': reason, 'inDash': key not in [x['key'] for x in compare.get('apiOnly', [])]})
-    if body and key.startswith('m_'):
-        arts = law_doc(key, body, info) if reg.get('target') == 'law' else adm_doc(key, body, info)
-        kind = info.get('kind') or reg.get('kind') or ''
-        no = '%s 제%s호' % (kind, str(info.get('promulNo') or '').lstrip('0')) + (', %s 공포' % dfmt(info.get('promul')) if info.get('promul') else '')
-        docs.append({'key': key, 'name': info.get('name') or reg['name'], 'kind': kind, 'eff': dfmt(info.get('enforce')), 'effRaw': info.get('enforce'),
-                     'no': no, 'st': '국가법령정보센터 Open API 현행본', 'note': '', 'arts': arts, 'apps': [], 'g': 'api'})
+    if body:
+        try:
+            d = to_doc(key, info, reg, body)
+        except Exception as e:
+            print('변환 실패', key, e); continue
+        alldocs.append(d)
+        if key.startswith('m_'): docs.append(d)
 
 prec, full = [], {}
 idx = json.load(open('prec_index.json', encoding='utf-8'))['items'] if os.path.exists('prec_index.json') else {}
@@ -107,5 +139,7 @@ os.makedirs('dash', exist_ok=True)
 out = {'built': datetime.now(KST).strftime('%Y-%m-%d %H:%M'), 'docs': docs, 'revs': revs, 'prec': prec}
 json.dump(out, open('dash/extra.json', 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
 json.dump(full, open('dash/precfull.json', 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+json.dump({'built': out['built'], 'docs': alldocs}, open('dash/apidocs.json', 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+print('전체 API 규정 변환 %d개, 별표 %d, 서식 %d' % (len(alldocs), sum(1 for d in alldocs for a in d['apps'] if a['k'] != '서식'), sum(1 for d in alldocs for a in d['apps'] if a['k'] == '서식')))
 print('대시보드용: 추가 규정 %d개(조문 %d), 제개정 현황 %d, 판례 %d(전문 %d)' % (len(docs), sum(len(d['arts']) for d in docs), len(revs), len(prec), len(full)))
 for d in docs: print(' -', d['name'], len(d['arts']))
