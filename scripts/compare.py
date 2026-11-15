@@ -11,6 +11,11 @@ man = json.load(open('manifest.json', encoding='utf-8'))['regs']
 norm = lambda s: re.sub(r'[\s·ㆍ\-\(\)]', '', re.sub(r'^\((고용노동부|국토교통부|환경부)\)\s*', '', s or ''))
 by = {norm(L['name']): (k, L) for k, L in S['laws'].items()}
 diffs, api_only, same = [], [], 0
+def note(v, L, a, b):
+    ap, sp = str(v.get('promul') or ''), str(L.get('promul') or '')
+    if sp and ap and sp > ap: return '수록본이 더 나중 공포본(%s). 국가법령정보센터 현행 목록 반영 지연 또는 시행 예정분 선반영 — 원문 확인 필요' % sp
+    if ap and sp and ap > sp: return '국가법령정보센터에 더 나중 공포본(%s)이 있음 — 수록본 갱신 필요' % ap
+    return '공포본은 같고 시행일 표기가 다름(%s / %s) — 부칙의 단계 시행 여부 확인' % (a, b)
 for key, v in man.items():
     hit = by.get(norm(v.get('name')))
     if not hit:
@@ -21,7 +26,7 @@ for key, v in man.items():
         same += 1; continue
     diffs.append({'key': key, 'name': v.get('name'), 'api_enforce': a, 'api_promul': v.get('promul'), 'api_no': v.get('promulNo'),
                   'sanan_enforce': b, 'sanan_no': str(L.get('promulNo') or ''), 'sanan_promul': str(L.get('promul') or ''),
-                  'note': '국가법령정보센터 현행이 더 최근 시행' if a > b else '수록본이 더 최근(시행 예정 개정 선반영 가능성)'})
+                  'note': note(v, L, a, b)})
 out = {'checked': datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M'), 'sananBuilt': S.get('built'), 'same': same, 'diffs': diffs, 'apiOnly': api_only}
 json.dump(out, open('compare.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 print('일치 %d, 차이 %d, API에만 %d' % (same, len(diffs), len(api_only)))
