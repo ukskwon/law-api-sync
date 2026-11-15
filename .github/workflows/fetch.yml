@@ -14,7 +14,7 @@ concurrency: fetch
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,15 +30,23 @@ jobs:
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: python3 scripts/fetch.py ${{ github.event.inputs.only }}
+      - name: 판례 받기(산업안전보건법·중대재해처벌법)
+        if: always()
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+        run: python3 scripts/fetch_prec.py || echo "판례 받기 실패 — 다음 실행에서 이어 받음"
       - name: 대시보드 자료 원천과 대조
         if: always()
         run: |
           git clone -q --depth 1 https://github.com/kachia84-blip/sanan-search.git /tmp/sanan
           python3 -I scripts/compare.py /tmp/sanan
+      - name: 대시보드용 변환
+        if: always()
+        run: python3 -I scripts/convert.py
       - name: 바뀐 것만 저장
         if: always()
         run: |
           git config user.name "law-api-sync"
           git config user.email "law-api-sync@users.noreply.github.com"
-          git add -A data manifest.json report.json compare.json || true
+          git add -A data manifest.json report.json compare.json prec_index.json dash || true
           if git diff --cached --quiet; then echo "변경 없음"; else git commit -m "법령 원문 갱신 $(TZ=Asia/Seoul date +%F)" && git push; fi
