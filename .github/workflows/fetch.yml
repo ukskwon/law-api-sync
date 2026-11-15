@@ -1,0 +1,39 @@
+name: 법령 원문 받기
+on:
+  schedule:
+    - cron: '17 19 * * *'   # 매일 04:17 KST
+  workflow_dispatch:
+    inputs:
+      only:
+        description: '일부만 받을 규정 키(공백 구분, 비우면 전체)'
+        required: false
+        default: ''
+permissions:
+  contents: write
+concurrency: fetch
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 접속 확인
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+        run: |
+          code=$(curl -s -o /tmp/t.json -w '%{http_code}' --max-time 30 "https://www.law.go.kr/DRF/lawSearch.do?OC=${LAW_OC}&target=law&type=JSON&query=%EC%82%B0%EC%97%85%EC%95%88%EC%A0%84%EB%B3%B4%EA%B1%B4%EB%B2%95" || true)
+          echo "HTTP $code"; head -c 300 /tmp/t.json || true; echo
+      - name: 원문 받기
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+        run: python3 scripts/fetch.py ${{ github.event.inputs.only }}
+      - name: 바뀐 것만 저장
+        if: always()
+        run: |
+          git config user.name "law-api-sync"
+          git config user.email "law-api-sync@users.noreply.github.com"
+          git add -A data manifest.json report.json || true
+          if git diff --cached --quiet; then echo "변경 없음"; else git commit -m "법령 원문 갱신 $(TZ=Asia/Seoul date +%F)" && git push; fi
