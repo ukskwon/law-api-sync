@@ -37,13 +37,17 @@ def find(reg):
     if reg['target'] == 'law':
         r = get('lawSearch.do', target='law', query=q, display=100)
         rows = as_list((r.get('LawSearch') or {}).get('law'))
-        rows = [x for x in rows if norm(x.get('법령명한글')) == want and x.get('현행연혁코드', '현행') == '현행']
-        if not rows: return None
-        # 같은 법령이 공포 회차별로 여러 줄 나올 수 있다(시행일이 나뉜 개정). 가장 최근 공포본을 고른다.
-        rows.sort(key=lambda x: (str(x.get('공포일자') or ''), int(str(x.get('법령일련번호') or 0) or 0)), reverse=True)
+        rows = [x for x in rows if norm(x.get('법령명한글')) == want]
+        # 같은 법령이 공포 회차별로 여러 줄(현행·연혁·시행예정) 나올 수 있다. 오늘까지 시행된 것 중 가장 최근 공포본을 고른다.
+        today = datetime.now(KST).strftime('%Y%m%d')
+        live = [x for x in rows if str(x.get('시행일자') or '') <= today] or rows
+        if not live: return None
+        rows = sorted(live, key=lambda x: (str(x.get('공포일자') or ''), int(str(x.get('법령일련번호') or 0) or 0)), reverse=True)
+        nxt = sorted([x for x in rows if str(x.get('시행일자') or '') > today], key=lambda x: str(x.get('시행일자')))
         x = rows[0]
         return {'mst': x.get('법령일련번호'), 'id': x.get('법령ID'), 'name': (x.get('법령명한글') or '').strip(),
-                'promul': x.get('공포일자'), 'promulNo': x.get('공포번호'), 'enforce': x.get('시행일자'), 'kind': x.get('법령구분명'), 'rev': x.get('제개정구분명')}
+                'promul': x.get('공포일자'), 'promulNo': x.get('공포번호'), 'enforce': x.get('시행일자'), 'kind': x.get('법령구분명'), 'rev': x.get('제개정구분명'),
+                'rows': [[r.get('법령일련번호'), r.get('공포일자'), r.get('공포번호'), r.get('시행일자'), r.get('현행연혁코드')] for r in rows[:6]]}
     r = get('lawSearch.do', target='admrul', query=q, display=100)
     rows = as_list((r.get('AdmRulSearch') or {}).get('admrul'))
     rows = [x for x in rows if norm(x.get('행정규칙명')) == want and x.get('현행연혁구분', '현행') == '현행']
