@@ -1,5 +1,11 @@
 {
- "fetched": "2026-11-19 10:13",
+ "fetched": "2026-11-20 10:16",
  "changed": [],
- "fails": []
+ "fails": [
+  {
+   "key": "m_md",
+   "name": "건설기술 진흥법 시행령",
+   "why": "lawSearch.do: <urlopen error [Errno -3] Temporary failure in name resolution>"
+  }
+ ]
 }
