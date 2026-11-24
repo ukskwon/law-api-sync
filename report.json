@@ -1,5 +1,16 @@
 {
- "fetched": "2026-11-23 09:19",
+ "fetched": "2026-11-24 13:18",
  "changed": [],
- "fails": []
+ "fails": [
+  {
+   "key": "law",
+   "name": "산업안전보건법",
+   "why": "lawSearch.do: <urlopen error [Errno -3] Temporary failure in name resolution>"
+  },
+  {
+   "key": "m_mg1",
+   "name": "건설공사 안전관리 업무수행 지침",
+   "why": "lawSearch.do: <urlopen error [Errno -3] Temporary failure in name resolution>"
+  }
+ ]
 }
